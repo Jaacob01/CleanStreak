@@ -1,0 +1,59 @@
+version: "3.8"
+
+# 完整部署：PG + Redis + 后端
+# docker compose up -d --build
+
+services:
+  backend:
+    build: .
+    container_name: cleanstreak-api
+    restart: unless-stopped
+    ports:
+      - "${APP_EXPOSE_PORT:-8000}:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    container_name: cleanstreak-db
+    restart: unless-stopped
+    ports:
+      - "${DB_EXPOSE_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-cleanstreak}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-cleanstreak}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cleanstreak-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_EXPOSE_PORT:-6379}:6379"
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-}
+      --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:

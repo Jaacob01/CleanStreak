@@ -1,0 +1,16 @@
+{
+  "servers": [
+    {
+      "name": "腾讯云服务器",
+      "host": "114.132.91.218",
+      "port": 22,
+      "user": "root",
+      "auth": {
+        "type": "password",
+        "password": "Jac_Nov09"
+      },
+      "remote_dir": "/mnt/app/CleanStreak/backend",
+      "exclude": [".env", ".venv", "__pycache__", "*.pyc", ".git"]
+    }
+  ]
+}

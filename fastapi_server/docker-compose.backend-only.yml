@@ -1,0 +1,14 @@
+# 仅后端容器：连接外部 PG/Redis
+# docker compose -f docker-compose.backend-only.yml up -d --build
+
+services:
+  backend:
+    build: .
+    container_name: cleanstreak-api
+    restart: unless-stopped
+    ports:
+      - "${APP_EXPOSE_PORT:-8000}:8000"
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
