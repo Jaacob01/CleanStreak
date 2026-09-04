@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist/
+*.ipa
+*.apk
+.DS_Store
+android/.gradle/
+android/app/build/
+android/build/
