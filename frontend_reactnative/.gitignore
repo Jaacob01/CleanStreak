@@ -1,3 +1,6 @@
+# 环境变量不入库(EXPO_PUBLIC_API_URL 打包时由 eas env 注入,本地模板见 .env.example)
+.env
+.env.local
 node_modules/
 .expo/
 dist/
