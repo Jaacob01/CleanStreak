@@ -16,13 +16,13 @@ import {
 
 export async function createUser(username: string, password: string): Promise<User> {
   const res = await api_register(username, password);
-  return { id: res.id, username: res.username, created_at: res.created_at };
+  return { id: res.id, username: res.username, role: res.role, created_at: res.created_at };
 }
 
 export async function authenticateUser(username: string, password: string): Promise<User | null> {
   try {
     const res = await api_login(username, password);
-    return { id: res.id, username: res.username, created_at: res.created_at };
+    return { id: res.id, username: res.username, role: res.role, created_at: res.created_at };
   } catch {
     return null;
   }

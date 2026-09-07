@@ -110,13 +110,21 @@ async def delete_task(db: AsyncSession, task_id: int, user_id: int):
 
 async def complete_task(db: AsyncSession, task_id: int, user_id: int, completed: bool) -> Task:
     task = await get_task(db, task_id, user_id)
+    if task.completed == completed:
+        return task
     task.completed = completed
     task.completed_at = datetime.now(timezone.utc) if completed else None
     task.status = "done" if completed else "pending"
+    log = list(task.progress_log or [])
     if completed:
-        log = list(task.progress_log or [])
         log.append({"time": _now_hhmm(), "text": "✅ 已完成"})
-        task.progress_log = log
+    else:
+        # 撤销完成时移除最近一条完成记录，保证完成/取消成对，不重复累积
+        for i in range(len(log) - 1, -1, -1):
+            if log[i].get("text") == "✅ 已完成":
+                log.pop(i)
+                break
+    task.progress_log = log
     await db.flush()
     return task
 

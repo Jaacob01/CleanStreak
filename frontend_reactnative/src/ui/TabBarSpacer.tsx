@@ -8,10 +8,13 @@
 import { SafeAreaView } from 'react-native-screens/src/components/safe-area';
 
 export function TabBarSpacer({ extra = 12 }: { extra?: number }) {
+  // 屏蔽底层组件注入的 flex: 1：作为垫片必须恒定占位（原生下边距 + extra），
+  // 否则在与 flex:1 兄弟节点同处一个固定高度纵向容器时会平分剩余空间，
+  // 把贴底 UI（如聊天输入坞）顶到屏幕中间。
   return (
     <SafeAreaView
       edges={{ top: false, bottom: true, left: false, right: false }}
-      style={{ height: extra }}
+      style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', height: extra }}
     />
   );
 }

@@ -16,7 +16,7 @@ import {
   api_blockTask, api_deleteTask,
 } from '../api/tasks';
 import type { Task, ProgressLogEntry } from '../db/types';
-import type { RootParamList } from '../navigation/types';
+import type { RootParamList, RootNav } from '../navigation/types';
 
 const PRIORITY_LABELS = ['P0 紧急', 'P1 高', 'P2 中', 'P3 低'];
 const PRIORITY_COLORS: Record<number, string> = {
@@ -25,7 +25,7 @@ const PRIORITY_COLORS: Record<number, string> = {
 
 export default function TaskDetailScreen() {
   const colors = useTheme();
-  const navigation = useNavigation();
+  const navigation = useNavigation<RootNav>();
   const route = useRoute<RouteProp<RootParamList, 'TaskDetail'>>();
   const toast = useToast();
   const taskId = route.params?.taskId;

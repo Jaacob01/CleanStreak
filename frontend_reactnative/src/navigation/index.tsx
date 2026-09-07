@@ -1,6 +1,6 @@
 /**
- * 根导航：登录门控 + 3 Tab（今日/统计/我的） + 全局栈
- * 管理页在「我的 → 习惯与任务管理」进入（栈内页面）
+ * 根导航：登录门控 + 4 Tab（今日/统计/AI/我的） + 全局栈
+ * 管理页在「我的 → 习惯与任务管理」进入（栈内页面）；AI 设置仅管理员可见
  * Native 用原生 UITabBarController（App.tsx 里 Appearance.setColorScheme('light') 全局锁定浅色外观）
  * Web 用 JS 版 BottomTab（避免污染 web bundle）
  */
@@ -15,6 +15,8 @@ import { RootParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
 import ManageScreen from '../screens/ManageScreen';
 import StatsScreen from '../screens/StatsScreen';
+import AIScreen from '../screens/AIScreen';
+import AISettingsScreen from '../screens/AISettingsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import LoginScreen from '../screens/LoginScreen';
 import DayScreen from '../screens/DayScreen';
@@ -47,6 +49,7 @@ function WebTabs() {
     >
       <WebTab.Screen name="TodayTab" component={HomeScreen} options={{ title: '今日', tabBarIcon: ({ color }) => <TabIcon name="flame" color={color} /> }} />
       <WebTab.Screen name="StatsTab" component={StatsScreen} options={{ title: '统计', tabBarIcon: ({ color }) => <TabIcon name="stats-chart" color={color} /> }} />
+      <WebTab.Screen name="AITab" component={AIScreen} options={{ title: 'AI', tabBarIcon: ({ color }) => <TabIcon name="sparkles" color={color} /> }} />
       <WebTab.Screen name="ProfileTab" component={ProfileScreen} options={{ title: '我的', tabBarIcon: ({ color }) => <TabIcon name="person-circle" color={color} /> }} />
     </WebTab.Navigator>
   );
@@ -71,6 +74,7 @@ function NativeTabs() {
     >
       <Tab.Screen name="TodayTab" component={HomeScreen} options={{ title: '今日', tabBarIcon: () => ({ type: 'sfSymbol', name: 'flame' }) }} />
       <Tab.Screen name="StatsTab" component={StatsScreen} options={{ title: '统计', tabBarIcon: () => ({ type: 'sfSymbol', name: 'chart.bar' }) }} />
+      <Tab.Screen name="AITab" component={AIScreen} options={{ title: 'AI', tabBarIcon: () => ({ type: 'sfSymbol', name: 'sparkles' }) }} />
       <Tab.Screen name="ProfileTab" component={ProfileScreen} options={{ title: '我的', tabBarIcon: () => ({ type: 'sfSymbol', name: 'person.crop.circle' }) }} />
     </Tab.Navigator>
   );
@@ -90,6 +94,7 @@ function InnerNavigator() {
       <Stack.Screen name="Manage" component={ManageScreen} />
       <Stack.Screen name="TaskEdit" component={TaskEditScreen} />
       <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+      <Stack.Screen name="AISettings" component={AISettingsScreen} />
     </Stack.Navigator>
   );
 }

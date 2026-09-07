@@ -1,6 +1,6 @@
 /**
- * 统计页：习惯统计 + 任务统计，分段切换
- * streak 指标 / 月度热力图 / 星期分布 / 最近记录
+ * 统计页：习惯统计 + 任务统计 + AI 分析，分段切换
+ * streak 指标 / 月度热力图 / 星期分布 / 最近记录 / AI 智能分析
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -13,6 +13,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/auth';
 import { TabBarSpacer } from '../ui/TabBarSpacer';
 import { TaskStatsPanel } from '../ui/TaskStatsPanel';
+import { AIAnalysisPanel } from '../ui/AIAnalysisPanel';
 import { getAllEntries, getHabits } from '../db';
 import { Habit, HabitEntry } from '../db/types';
 import {
@@ -27,7 +28,7 @@ type StateColor = { bg: string; icon: IconName | null; iconColor: string };
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
-type StatsTab = 'habits' | 'tasks';
+type StatsTab = 'habits' | 'tasks' | 'ai';
 
 export default function StatsScreen() {
   const colors = useTheme();
@@ -88,6 +89,7 @@ export default function StatsScreen() {
             onPress={() => setTab('tasks')}
             style={({ pressed }) => [
               tabsStyles.seg,
+              tabsStyles.segDivider,
               tab === 'tasks' && { backgroundColor: colors.accent },
               pressed && { opacity: 0.7 },
             ]}
@@ -95,11 +97,24 @@ export default function StatsScreen() {
             <Ionicons name="checkbox-outline" size={13} color={colors.ink} />
             <T variant="cap" color={colors.ink} style={tabsStyles.segText}>任务</T>
           </Pressable>
+          <Pressable
+            onPress={() => setTab('ai')}
+            style={({ pressed }) => [
+              tabsStyles.seg,
+              tab === 'ai' && { backgroundColor: colors.accent },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons name="sparkles" size={13} color={colors.ink} />
+            <T variant="cap" color={colors.ink} style={tabsStyles.segText}>AI</T>
+          </Pressable>
         </View>
       </View>
 
       {tab === 'tasks' ? (
         <TaskStatsPanel active={tab === 'tasks'} />
+      ) : tab === 'ai' ? (
+        <AIAnalysisPanel active={tab === 'ai'} />
       ) : (
         <HabitStatsContent
           habits={habits}

@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const res = await api_login(username, password);
       await secureSet(TOKEN_KEY, res.token);
       setToken(res.token);
-      set({ user: { id: res.id, username: res.username, created_at: res.created_at }, loggingIn: false });
+      set({ user: { id: res.id, username: res.username, role: res.role, created_at: res.created_at }, loggingIn: false });
       return true;
     } catch (e: any) {
       console.error('[CleanStreak] 登录失败:', e);
@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const res = await api_register(username, password);
       await secureSet(TOKEN_KEY, res.token);
       setToken(res.token);
-      set({ user: { id: res.id, username: res.username, created_at: res.created_at }, loggingIn: false });
+      set({ user: { id: res.id, username: res.username, role: res.role, created_at: res.created_at }, loggingIn: false });
       return true;
     } catch (e: any) {
       console.error('[CleanStreak] 注册失败:', e);

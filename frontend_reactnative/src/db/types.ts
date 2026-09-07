@@ -3,6 +3,7 @@
 export interface User {
   id: number;
   username: string;
+  role: 'user' | 'admin' | string;  // 管理员由数据库手动授予
   created_at: string;
 }
 

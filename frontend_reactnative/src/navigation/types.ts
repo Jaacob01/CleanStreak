@@ -8,11 +8,13 @@ export type RootParamList = {
   Manage: undefined;
   TaskEdit: { taskId?: number; title?: string } | undefined;
   TaskDetail: { taskId: number };
+  AISettings: undefined;
 };
 
 export type TabParamList = {
   TodayTab: undefined;
   StatsTab: undefined;
+  AITab: undefined;
   ProfileTab: undefined;
 };
 

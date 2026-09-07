@@ -3,7 +3,7 @@
  */
 
 // 后端地址，可通过环境变量覆盖
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 let _token: string | null = null;
 

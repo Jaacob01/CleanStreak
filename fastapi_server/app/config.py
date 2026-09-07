@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
 
+    # AI：api_key 加密密钥（留空则从 SECRET_KEY 派生）
+    AI_SECRET_KEY: str = ""
+
     # CORS
     CORS_ORIGINS: str = '["http://localhost:3000","http://localhost:8080"]'
 

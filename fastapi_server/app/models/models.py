@@ -17,6 +17,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(50), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
+    # 角色：user=普通用户（默认）；admin=管理员（仅手动改库授予，可配置 AI）
+    role = Column(String(10), nullable=False, default="user", server_default="user")
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     tasks = relationship("Task", back_populates="user", lazy="noload")
@@ -135,4 +137,37 @@ class TaskGroup(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_task_group_user_name"),
         Index("ix_task_groups_user_sort", "user_id", "sort_order"),
+    )
+
+
+class AISettings(Base):
+    """AI 全局配置（单行，管理员维护）；api_key Fernet 加密存储"""
+    __tablename__ = "ai_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    provider = Column(String(50), nullable=False, default="custom", server_default="custom")
+    base_url = Column(String(255), nullable=False, default="", server_default="")
+    api_key_encrypted = Column(String, nullable=True)
+    model_name = Column(String(100), nullable=False, default="", server_default="")
+    system_prompt_chat = Column(String, nullable=True)
+    system_prompt_analyze = Column(String, nullable=True)
+    temperature = Column(Float, nullable=False, default=0.7, server_default="0.7")
+    max_tokens = Column(Integer, nullable=False, default=2048, server_default="2048")
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class AIChatMessage(Base):
+    """AI 聊天历史（按用户隔离）"""
+    __tablename__ = "ai_chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(String(10), nullable=False)  # user / assistant
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("ix_ai_chat_user_time", "user_id", "id"),
     )

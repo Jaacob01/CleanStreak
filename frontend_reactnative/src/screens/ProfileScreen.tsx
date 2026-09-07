@@ -126,6 +126,15 @@ export default function ProfileScreen() {
           sub="修改密码、生物识别解锁"
           onPress={() => navigation.navigate('Settings')}
         />
+        {user?.role === 'admin' && (
+          <MenuRow
+            icon="sparkles"
+            iconBg={colors.accent}
+            title="AI 设置"
+            sub="供应商 · API Key · 模型 · 系统提示词"
+            onPress={() => navigation.navigate('AISettings')}
+          />
+        )}
         <MenuRow
           icon="download-outline"
           iconBg={colors.success}

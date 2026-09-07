@@ -20,6 +20,7 @@ class ChangePasswordRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     username: str
+    role: str = "user"
     created_at: datetime
 
     class Config:

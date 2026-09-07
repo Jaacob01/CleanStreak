@@ -9,3 +9,5 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 alembic>=1.13.0
 python-multipart>=0.0.6
+httpx>=0.26.0
+cryptography>=42.0.0

@@ -20,3 +20,10 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在")
     return user
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    """管理员校验：role 由数据库手动维护（UPDATE users SET role='admin' ...）"""
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
+    return user

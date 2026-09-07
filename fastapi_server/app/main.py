@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.redis import init_redis, close_redis
-from app.routers import auth, habits, entries, stats, export, tasks, projects, groups
+from app.routers import auth, habits, entries, stats, export, tasks, projects, groups, ai
 
 
 @asynccontextmanager
@@ -44,6 +44,7 @@ app.include_router(export.router)
 app.include_router(tasks.router)
 app.include_router(projects.router)
 app.include_router(groups.router)
+app.include_router(ai.router)
 
 
 @app.get("/health")
