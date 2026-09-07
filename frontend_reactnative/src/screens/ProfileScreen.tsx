@@ -113,6 +113,13 @@ export default function ProfileScreen() {
         <Divider />
 
         <MenuRow
+          icon="build-outline"
+          iconBg={colors.accent}
+          title="习惯与任务管理"
+          sub="习惯排序归档 · 项目维护 · 任务筛选"
+          onPress={() => navigation.navigate('Manage')}
+        />
+        <MenuRow
           icon="settings-outline"
           iconBg={colors.info}
           title="设置"

@@ -21,7 +21,7 @@ import type { RootNav } from '../navigation/types';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-export default function HabitsScreen() {
+export default function HabitsScreen({ embedded }: { embedded?: boolean }) {
   const colors = useTheme();
   const navigation = useNavigation<RootNav>();
   const user = useAuthStore(s => s.user);
@@ -66,20 +66,22 @@ export default function HabitsScreen() {
   };
 
   return (
-    <Screen>
-      <Header
-        title="习惯管理"
-        back={false}
-        right={
-          <Pressable
-            hitSlop={8}
-            onPress={() => navigation.navigate('HabitEdit', {})}
-            style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
-          >
-            <Ionicons name="add-circle-sharp" size={26} color={colors.primary} />
-          </Pressable>
-        }
-      />
+    <>
+      {!embedded && (
+        <Header
+          title="习惯管理"
+          back={false}
+          right={
+            <Pressable
+              hitSlop={8}
+              onPress={() => navigation.navigate('HabitEdit', {})}
+              style={({ pressed }) => [{ opacity: pressed ? 0.5 : 1 }]}
+            >
+              <Ionicons name="add-circle-sharp" size={26} color={colors.primary} />
+            </Pressable>
+          }
+        />
+      )}
       <ScrollView style={styles.flex1} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {loaded && habits.length === 0 && (
           <View style={styles.emptyWrap}>
@@ -129,7 +131,7 @@ export default function HabitsScreen() {
         )}
         <TabBarSpacer />
       </ScrollView>
-    </Screen>
+    </>
   );
 }
 

@@ -19,6 +19,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
+    tasks = relationship("Task", back_populates="user", lazy="noload")
     habits = relationship("Habit", back_populates="user", lazy="selectin")
     entries = relationship("HabitEntry", back_populates="user", lazy="noload")
 
@@ -44,6 +45,7 @@ class Habit(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="habits")
+    linked_tasks = relationship("Task", back_populates="habit", lazy="noload")
     entries = relationship("HabitEntry", back_populates="habit", cascade="all, delete-orphan", lazy="noload")
 
     __table_args__ = (
@@ -70,4 +72,67 @@ class HabitEntry(Base):
         UniqueConstraint("habit_id", "date", name="uq_habit_date"),
         Index("ix_entries_user_date", "user_id", "date"),
         Index("ix_entries_habit_date", "habit_id", "date"),
+    )
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(String, nullable=True)
+    date = Column(String(10), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    group = Column(String(20), nullable=False, default="Work")
+    project = Column(String(50), nullable=True)
+    priority = Column(Integer, nullable=False, default=2)
+    status = Column(String(10), nullable=False, default="pending")
+    completed = Column(Boolean, nullable=False, default=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    progress_log = Column(JSON, nullable=False, default=list)
+    blocked_reason = Column(String, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    source = Column(String(10), nullable=False, default="manual")
+    habit_id = Column(Integer, ForeignKey("habits.id", ondelete="SET NULL"), nullable=True)
+
+    user = relationship("User", back_populates="tasks")
+    habit = relationship("Habit", back_populates="linked_tasks")
+
+    __table_args__ = (
+        Index("ix_tasks_user_date", "user_id", "date"),
+        Index("ix_tasks_user_status", "user_id", "status"),
+        Index("ix_tasks_user_group", "user_id", "group"),
+    )
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(50), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_project_user_name"),
+        Index("ix_projects_user_sort", "user_id", "sort_order"),
+    )
+
+
+class TaskGroup(Base):
+    """任务分组：按用户隔离；Task.group 存分组名字符串"""
+    __tablename__ = "task_groups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(20), nullable=False)
+    color = Column(String(20), nullable=False, default="#4D7CFE")
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_task_group_user_name"),
+        Index("ix_task_groups_user_sort", "user_id", "sort_order"),
     )

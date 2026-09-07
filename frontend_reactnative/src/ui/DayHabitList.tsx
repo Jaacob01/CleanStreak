@@ -1,13 +1,11 @@
 /**
  * 某天的习惯打卡列表（HomeScreen 今日 / DayScreen 任意日期 共用）
- * 可选顶部「今日总览」横幅；未生效日习惯归入末尾「今日未安排」区
+ * 可选顶部分组标题：左侧名称 + 右侧当日统计；未生效日习惯归入末尾「今日未安排」区
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { T, EmptyState, PrimaryButton, SectionHeader } from './components';
-import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/auth';
 import { TabBarSpacer } from './TabBarSpacer';
 import { EntryCard } from './EntryCard';
@@ -18,15 +16,21 @@ import type { RootNav } from '../navigation/types';
 
 interface Props {
   date: string;
-  showHero?: boolean;
-  /** 在 Tab 页内使用时按悬浮 tab 栏留白；栈内页面（如日期页）用小留白 */
+  /** 顶部分组标题（左侧名称 + 右侧统计）；标题随日期自适应（今日 / M月D日） */
+  showHeader?: boolean;
+  /** 不带自带边距：外层容器已提供 16 边距时使用 */
+  flush?: boolean;
+  /** 在 Tab 页内使用：边距由外层容器负责，并按悬浮 tab 栏留白；栈内页面（如日期页）自带 16 边距 */
   inTabs?: boolean;
+  /** 变化时重新加载（外层界面数据刷新后同步列表） */
+  refreshKey?: number;
   /** 所在 pager 页是否处于停靠激活态；从非激活→激活时重载数据 */
   active?: boolean;
 }
 
-export function DayHabitList({ date, showHero = false, inTabs = false, active = true }: Props) {
-  const colors = useTheme();
+export function DayHabitList({
+  date, showHeader = false, flush = false, inTabs = false, refreshKey = 0, active = true,
+}: Props) {
   const navigation = useNavigation<RootNav>();
   const user = useAuthStore(s => s.user);
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -70,6 +74,12 @@ export function DayHabitList({ date, showHero = false, inTabs = false, active = 
     prevActive.current = active;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+  const prevRefresh = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey !== prevRefresh.current) void load();
+    prevRefresh.current = refreshKey;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   if (loaded && loadError) {
     return (
@@ -96,10 +106,13 @@ export function DayHabitList({ date, showHero = false, inTabs = false, active = 
 
   const entryOf = (h: Habit): HabitEntry | null => entries.find(e => e.habit_id === h.id) ?? null;
   const today = todayString();
+  const isTodayDate = date === today;
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const dateLabel = dm ? `${Number(dm[2])}月${Number(dm[3])}日` : date;
   const scheduled = habits.filter(h => isScheduledDay(h, date));
   const unscheduled = habits.filter(h => !isScheduledDay(h, date));
 
-  // 今日总览
+  // 当日统计（供分组标题右侧展示）
   let success = 0;
   let fail = 0;
   let pending = 0;
@@ -125,37 +138,21 @@ export function DayHabitList({ date, showHero = false, inTabs = false, active = 
   return (
     <ScrollView
       style={styles.flex1}
-      contentContainerStyle={styles.body}
+      contentContainerStyle={flush || inTabs ? styles.bodyFlush : styles.body}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      {showHero && scheduled.length > 0 && (
-        <View style={styles.heroWrap}>
-          <View pointerEvents="none" style={[styles.heroShadow, { backgroundColor: colors.ink }]} />
-          <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.ink }]}>
-            <View style={[styles.heroIconBox, { backgroundColor: colors.accent, borderColor: colors.ink }]}>
-              <Ionicons name="today-sharp" size={22} color={colors.ink} />
-            </View>
-            <View style={styles.heroMain}>
-              <T variant="cap" color={colors.subtext}>今日进度</T>
-              <View style={styles.heroNumRow}>
-                <T variant="mono" style={[styles.heroNum, { color: colors.primary }]}>{success}</T>
-                <T variant="cap" color={colors.subtext}>/ {scheduled.length} 个习惯达标</T>
-              </View>
-            </View>
-          </View>
-          <View style={[styles.heroBar, { borderColor: colors.ink, backgroundColor: colors.surfaceAlt }]}>
-            {success > 0 && <View style={{ flex: success, backgroundColor: colors.success }} />}
-            {fail > 0 && <View style={{ flex: fail, backgroundColor: colors.danger }} />}
-            {pending > 0 && <View style={{ flex: pending, backgroundColor: colors.accent }} />}
-            {success + fail + pending === 0 && <View style={{ flex: 1, backgroundColor: colors.surfaceAlt }} />}
-          </View>
-          <T variant="cap" color={colors.subtext} style={styles.heroFoot}>
+      {showHeader && scheduled.length > 0 && (
+        <View style={styles.groupHeaderRow}>
+          <SectionHeader icon="flame-sharp" text={`${isTodayDate ? '今日' : dateLabel}习惯 (${scheduled.length})`} />
+          <T variant="cap" style={styles.groupStats}>
             {fail > 0
-              ? `失守 ${fail} 个 · 重新开始也没关系`
-              : pending === 0 && scheduled.length > 0
-                ? '今日全部达标，漂亮！'
-                : `还剩 ${pending} 个待完成`}
+              ? `${success}/${scheduled.length} 达标 · 失守 ${fail} 个`
+              : isTodayDate && pending === 0
+                ? `${success}/${scheduled.length} 达标 · 全部完成`
+                : isTodayDate
+                  ? `${success}/${scheduled.length} 达标 · 剩 ${pending} 个`
+                  : `${success}/${scheduled.length} 达标`}
           </T>
         </View>
       )}
@@ -181,24 +178,16 @@ export function DayHabitList({ date, showHero = false, inTabs = false, active = 
 const styles = StyleSheet.create({
   flex1: { flex: 1 },
   body: { padding: 16 },
+  // inTabs：外层 todayScroll 已提供 16 边距，这里不再叠加；顶部间距由待办区的 marginBottom 给出
+  bodyFlush: {},
   empty: { flex: 1, justifyContent: 'center', padding: 16 },
   emptyBtn: { marginTop: 16 },
-  // 今日总览
-  heroWrap: { marginBottom: 14 },
-  heroShadow: { position: 'absolute', top: 4, left: 4, right: 0, bottom: 20 },
-  heroCard: {
-    borderWidth: 2, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12,
+  // 分组标题（今日 tab）：左名称 + 右统计
+  groupHeaderRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 10,
   },
-  heroIconBox: {
-    width: 42, height: 42, borderWidth: 2, alignItems: 'center', justifyContent: 'center',
-  },
-  heroMain: { flex: 1 },
-  heroNumRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 2 },
-  heroNum: { fontSize: 32, lineHeight: 36, fontWeight: '900', letterSpacing: -1.5 },
-  heroBar: {
-    height: 14, borderWidth: 2, borderTopWidth: 0, flexDirection: 'row', overflow: 'hidden',
-  },
-  heroFoot: { marginTop: 6, textTransform: 'none', letterSpacing: 0 },
+  groupStats: { textTransform: 'none', letterSpacing: 0, marginRight: 16 },
   unschedWrap: { marginTop: 6 },
   dayPad: { height: 32 },
 });

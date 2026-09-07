@@ -14,11 +14,12 @@ import {
   StyleSheet,
   Text as RNText,
   TextInput,
+  useWindowDimensions,
   View,
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
@@ -294,7 +295,7 @@ export function Input(props: InputProps) {
   const [focused, setFocused] = React.useState(false);
   return (
     <View style={styles.fieldGap}>
-      <T variant="cap">{props.label}{props.required ? ' *' : ''}</T>
+      <T variant="cap" style={styles.fieldLabel}>{props.label}{props.required ? ' *' : ''}</T>
       <View>
         <TextInput
           value={props.value}
@@ -314,7 +315,7 @@ export function Input(props: InputProps) {
               backgroundColor: colors.surface,
               borderColor: focused ? colors.primary : colors.ink,
               color: colors.text,
-              minHeight: props.multiline ? 76 : 44,
+              minHeight: props.multiline ? 84 : 50,
               textAlignVertical: props.multiline ? 'top' : 'center',
             },
           ]}
@@ -345,7 +346,7 @@ export function PickerField({
   const current = options.find(o => o.value === value);
   return (
     <View style={styles.fieldGap}>
-      <T variant="cap">{label}{required ? ' *' : ''}</T>
+      <T variant="cap" style={styles.fieldLabel}>{label}{required ? ' *' : ''}</T>
       <View style={styles.shadowWrap}>
         <ShadowRect color={colors.ink} />
         <Pressable
@@ -357,39 +358,92 @@ export function PickerField({
             pressed && styles.sink,
           ]}
         >
-          <RNText style={{ color: current ? colors.text : colors.placeholder, fontSize: 14, fontWeight: '600' }}>
+          <RNText style={{ color: current ? colors.text : colors.placeholder, fontSize: 15, fontWeight: '600' }}>
             {current ? current.label : '请选择'}
           </RNText>
           <Ionicons name="chevron-down" size={16} color={colors.subtext} />
         </Pressable>
       </View>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={[styles.modalMask, { backgroundColor: colors.scrim }]} onPress={() => setOpen(false)}>
-          <View style={styles.modalShadowWrap}>
-            <ShadowRect color={colors.ink} offset={6} />
-            <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.ink }]}>
-              <ScrollView style={{ maxHeight: 420 }}>
-                {options.map(o => (
+      <PickerSheet
+        visible={open}
+        title={label}
+        options={options}
+        value={value}
+        onSelect={(v) => { onChange(v); setOpen(false); }}
+        onClose={() => setOpen(false)}
+      />
+    </View>
+  );
+}
+
+/** 底部选择弹层：标题栏 + 大触感选项；点遮罩关闭，点面板本身不关闭 */
+export function PickerSheet({
+  visible, title, options, value, onSelect, onClose,
+}: {
+  visible: boolean;
+  title: string;
+  options: PickerOption[];
+  value: string;
+  onSelect: (v: string) => void;
+  onClose: () => void;
+}) {
+  const colors = useTheme();
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={[styles.modalMask, { backgroundColor: colors.scrim }]} onPress={onClose}>
+        <View style={styles.sheetShadowWrap}>
+          <ShadowRect color={colors.ink} offset={6} />
+          <Pressable
+            style={[
+              styles.sheetCard,
+              { backgroundColor: colors.surface, borderColor: colors.ink, paddingBottom: insets.bottom + 16 },
+            ]}
+          >
+            <View style={[styles.sheetHeader, { borderBottomColor: colors.ink }]}>
+              <T variant="title">{title}</T>
+              <Pressable
+                hitSlop={8}
+                onPress={onClose}
+                style={({ pressed }) => [
+                  styles.sheetClose,
+                  { backgroundColor: colors.surface, borderColor: colors.ink },
+                  pressed && styles.sink2,
+                ]}
+              >
+                <Ionicons name="close-sharp" size={16} color={colors.text} />
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: Math.round(height * 0.5) }} bounces={false}>
+              {options.map((o, i) => {
+                const selected = o.value === value;
+                return (
                   <Pressable
                     key={o.value}
-                    onPress={() => { onChange(o.value); setOpen(false); }}
+                    onPress={() => { onSelect(o.value); }}
                     style={({ pressed }) => [
                       styles.optionRow,
-                      { borderBottomColor: colors.borderLight },
-                      o.value === value && { backgroundColor: colors.accentDim },
-                      pressed && { opacity: 0.7 },
+                      i < options.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+                      selected && { backgroundColor: colors.accentDim },
+                      pressed && { backgroundColor: colors.accent },
                     ]}
                   >
-                    <RNText style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>{o.label}</RNText>
-                    {o.value === value ? <Ionicons name="checkmark-sharp" size={18} color={colors.primary} /> : null}
+                    <RNText
+                      style={{ flex: 1, color: colors.text, fontSize: 16, fontWeight: selected ? '900' : '600' }}
+                      numberOfLines={1}
+                    >
+                      {o.label}
+                    </RNText>
+                    {selected && <Ionicons name="checkmark-sharp" size={20} color={colors.primary} />}
                   </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -404,7 +458,7 @@ export function MultiSelect({
   };
   return (
     <View style={styles.fieldGap}>
-      <T variant="cap">{label}</T>
+      <T variant="cap" style={styles.fieldLabel}>{label}</T>
       <View style={styles.chipRow}>
         {options.map(o => {
           const selected = values.includes(o.value);
@@ -511,26 +565,36 @@ const styles = StyleSheet.create({
     gap: 8, paddingVertical: 12, paddingHorizontal: 18, borderWidth: 2,
   },
   iconBtn: { width: 28, height: 28, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  fieldGap: { marginBottom: 14 },
+  fieldGap: { marginBottom: 20 },
+  fieldLabel: { marginBottom: 8 },
   input: {
     borderWidth: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
-  inputEye: { position: 'absolute', right: 12, top: 13 },
+  inputEye: { position: 'absolute', right: 14, top: 16 },
   pickerField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  modalMask: { flex: 1, justifyContent: 'center', padding: 24 },
-  modalShadowWrap: { paddingRight: 6, paddingBottom: 6 },
-  modalCard: { borderWidth: 2, maxHeight: '70%' },
+  modalMask: { flex: 1, justifyContent: 'flex-end', padding: 16 },
+  sheetShadowWrap: { paddingRight: 6, paddingBottom: 6 },
+  sheetCard: { borderWidth: 2 },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+  },
+  sheetClose: { width: 30, height: 30, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   optionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
+    paddingVertical: 16,
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {

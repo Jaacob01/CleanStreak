@@ -10,6 +10,8 @@ import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/auth';
 import { TabBarSpacer } from './TabBarSpacer';
 import { EntryCard } from './EntryCard';
+import { DayHabitList } from './DayHabitList';
+import { TaskSummary } from './TaskSummary';
 import { getEntriesByMonth, getHabits } from '../db';
 import { DayState, Habit, HabitEntry } from '../db/types';
 import { dayState, todayString, WEEKDAY_NAMES } from '../db/logic';
@@ -45,19 +47,21 @@ export function HabitMonthCalendar({ active = false }: Props) {
   const navigation = useNavigation<RootNav>();
   const user = useAuthStore(s => s.user);
   const now = new Date();
+  const today = todayString();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [entries, setEntries] = useState<HabitEntry[]>([]);
-  const [focusedDate, setFocusedDate] = useState<string | null>(null);
+  const [focusedDate, setFocusedDate] = useState<string | null>(today);
   const [modalDate, setModalDate] = useState<string | null>(null);
   const [selectedHabitId, setSelectedHabitId] = useState<number | null>(null);
-  const today = todayString();
+  const [listVersion, setListVersion] = useState(0);
 
   const load = useCallback(async () => {
     if (!user) return;
     setHabits(await getHabits(user.id));
     setEntries(await getEntriesByMonth(user.id, year, month));
+    setListVersion(v => v + 1);
   }, [user, year, month]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
@@ -116,7 +120,7 @@ export function HabitMonthCalendar({ active = false }: Props) {
 
   const prevMonth = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
-  const jumpToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1); };
+  const jumpToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1); setFocusedDate(today); };
 
   /** 点击日期：非选中→选中；已选中→打开弹窗 */
   const handlePressDate = (date: string) => {
@@ -207,6 +211,24 @@ export function HabitMonthCalendar({ active = false }: Props) {
       <T variant="cap" color={colors.subtext} style={styles.hint}>
         {focusedDate ? `已选 ${friendlyDate(focusedDate)}，再次点击打开打卡` : '点击日期选中，再次点击打卡'}
       </T>
+
+      {/* 选中日期的待办 + 习惯列表（与今日 tab 同款结构） */}
+      {focusedDate && (
+        <View style={styles.listWrap}>
+          <TaskSummary
+            date={focusedDate}
+            active={active}
+            onTaskPress={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
+          />
+          <DayHabitList
+            key={focusedDate}
+            date={focusedDate}
+            showHeader
+            flush
+            refreshKey={listVersion}
+          />
+        </View>
+      )}
 
       <TabBarSpacer />
 
@@ -352,6 +374,7 @@ const styles = StyleSheet.create({
   legendDot: { width: 14, height: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   legendText: { fontSize: 10, letterSpacing: 0, textTransform: 'none' },
   hint: { marginTop: 10, textTransform: 'none', letterSpacing: 0 },
+  listWrap: { marginTop: 12 },
   mask: { flex: 1, justifyContent: 'flex-end' },
   modalWrap: { paddingRight: 0, paddingBottom: 0 },
   modalShadow: { display: 'none' },

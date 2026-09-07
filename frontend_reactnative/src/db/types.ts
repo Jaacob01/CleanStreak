@@ -59,3 +59,70 @@ export interface HabitStats {
   successRate: number;    // 0-100，按生效日计
   weekday: number[];      // 正向=达成按星期分布；反向=失守按星期分布
 }
+
+// ---- 任务 ----
+
+export type TaskStatus = 'pending' | 'done' | 'shelved';
+
+export interface ProgressLogEntry {
+  time: string;  // HH:MM
+  text: string;
+}
+
+export interface Task {
+  id: number;
+  user_id: number;
+  title: string;
+  description: string | null;
+  date: string;             // YYYY-MM-DD
+  created_at: string;
+  group: string;            // 分组名字符串（按用户隔离，见 TaskGroup）
+  project: string | null;
+  priority: number;         // 0=P0 1=P1 2=P2 3=P3
+  status: TaskStatus;
+  completed: boolean;
+  completed_at: string | null;
+  progress_log: ProgressLogEntry[];
+  blocked_reason: string | null;
+  sort_order: number;
+  source: string;           // manual / carry
+  habit_id: number | null;
+}
+
+/** 任务分组（按用户隔离；Task.group 存的是分组名字符串） */
+export interface TaskGroup {
+  id: number;
+  user_id: number;
+  name: string;
+  color: string;
+  sort_order: number;
+  created_at: string;
+}
+
+/** 任务项目（任务.project 存的是项目名字符串） */
+export interface Project {
+  id: number;
+  user_id: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface TaskStats {
+  total: number;
+  completed: number;
+  pending: number;
+  blocked: number;
+  completion_rate: number;
+  max_age_days: number;
+  by_group: Record<string, { total: number; done: number; pending: number }>;
+  by_priority: Record<string, number>;
+}
+
+export interface TaskReport {
+  date: string;
+  completed_today: Task[];
+  pending: Task[];
+  blocked: Task[];
+  by_group: Record<string, { pending: number; completed: number; blocked: number }>;
+}

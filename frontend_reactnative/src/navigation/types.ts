@@ -5,11 +5,13 @@ export type RootParamList = {
   HabitEdit: { habitId?: number } | undefined;
   Day: { date: string } | undefined;
   Settings: undefined;
+  Manage: undefined;
+  TaskEdit: { taskId?: number; title?: string } | undefined;
+  TaskDetail: { taskId: number };
 };
 
 export type TabParamList = {
   TodayTab: undefined;
-  HabitsTab: undefined;
   StatsTab: undefined;
   ProfileTab: undefined;
 };

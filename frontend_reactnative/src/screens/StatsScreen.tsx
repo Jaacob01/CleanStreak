@@ -1,5 +1,5 @@
 /**
- * 统计页：总览 + 单习惯深视图
+ * 统计页：习惯统计 + 任务统计，分段切换
  * streak 指标 / 月度热力图 / 星期分布 / 最近记录
  */
 import React, { useCallback, useMemo, useState } from 'react';
@@ -12,6 +12,7 @@ import {
 import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/auth';
 import { TabBarSpacer } from '../ui/TabBarSpacer';
+import { TaskStatsPanel } from '../ui/TaskStatsPanel';
 import { getAllEntries, getHabits } from '../db';
 import { Habit, HabitEntry } from '../db/types';
 import {
@@ -26,10 +27,13 @@ type StateColor = { bg: string; icon: IconName | null; iconColor: string };
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
+type StatsTab = 'habits' | 'tasks';
+
 export default function StatsScreen() {
   const colors = useTheme();
   const navigation = useNavigation<RootNav>();
   const user = useAuthStore(s => s.user);
+  const [tab, setTab] = useState<StatsTab>('habits');
   const [habits, setHabits] = useState<Habit[]>([]);
   const [entriesByHabit, setEntriesByHabit] = useState<Map<number, HabitEntry[]>>(new Map());
   const [selected, setSelected] = useState<number | null>(null);
@@ -60,24 +64,83 @@ export default function StatsScreen() {
   const statsOf = useCallback((h: Habit) =>
     computeStats(h, entriesByHabit.get(h.id) ?? [], todayString()), [entriesByHabit]);
 
-  if (loaded && habits.length === 0) {
-    return (
-      <Screen>
-        <Header title="统计分析" back={false} />
-        <EmptyState icon="stats-chart-sharp" title="暂无数据" sub="先去「习惯」页创建一个习惯吧" />
-      </Screen>
-    );
-  }
-
   return (
     <Screen>
       <Header title="统计分析" back={false} />
 
+      {/* 分段切换 */}
+      <View style={tabsStyles.wrap}>
+        <View pointerEvents="none" style={[tabsStyles.shadow, { backgroundColor: colors.ink }]} />
+        <View style={[tabsStyles.row, { backgroundColor: colors.surface, borderColor: colors.ink }]}>
+          <Pressable
+            onPress={() => setTab('habits')}
+            style={({ pressed }) => [
+              tabsStyles.seg,
+              tabsStyles.segDivider,
+              tab === 'habits' && { backgroundColor: colors.accent },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons name="flame-sharp" size={13} color={colors.ink} />
+            <T variant="cap" color={colors.ink} style={tabsStyles.segText}>习惯</T>
+          </Pressable>
+          <Pressable
+            onPress={() => setTab('tasks')}
+            style={({ pressed }) => [
+              tabsStyles.seg,
+              tab === 'tasks' && { backgroundColor: colors.accent },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons name="checkbox-outline" size={13} color={colors.ink} />
+            <T variant="cap" color={colors.ink} style={tabsStyles.segText}>任务</T>
+          </Pressable>
+        </View>
+      </View>
+
+      {tab === 'tasks' ? (
+        <TaskStatsPanel active={tab === 'tasks'} />
+      ) : (
+        <HabitStatsContent
+          habits={habits}
+          activeHabits={activeHabits}
+          entriesByHabit={entriesByHabit}
+          selected={selected}
+          setSelected={setSelected}
+          habit={habit}
+          statsOf={statsOf}
+          loaded={loaded}
+          year={year}
+          month={month}
+          setYear={setYear}
+          setMonth={setMonth}
+          navigation={navigation}
+        />
+      )}
+    </Screen>
+  );
+}
+
+/** 习惯统计内容 */
+function HabitStatsContent({
+  habits, activeHabits, entriesByHabit, selected, setSelected, habit, statsOf,
+  loaded, year, month, setYear, setMonth, navigation,
+}: any) {
+  const colors = useTheme();
+  const now = new Date();
+  const today = todayString();
+
+  if (loaded && habits.length === 0) {
+    return <EmptyState icon="stats-chart-sharp" title="暂无数据" sub="先去「管理」页创建一个习惯吧" />;
+  }
+
+  return (
+    <>
       {/* 习惯选择 chips */}
       <View style={[styles.chipBar, { borderBottomColor: colors.ink }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           <Chip label="总览" active={selected === null} onPress={() => setSelected(null)} />
-          {activeHabits.map(h => (
+          {activeHabits.map((h: Habit) => (
             <Chip
               key={h.id}
               label={`${h.emoji} ${h.name}`}
@@ -96,16 +159,16 @@ export default function StatsScreen() {
           stats={statsOf(habit)}
           year={year}
           month={month}
-          onPrevMonth={() => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }}
-          onNextMonth={() => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }}
+          onPrevMonth={() => { if (month === 1) { setYear((y: number) => y - 1); setMonth(12); } else setMonth((m: number) => m - 1); }}
+          onNextMonth={() => { if (month === 12) { setYear((y: number) => y + 1); setMonth(1); } else setMonth((m: number) => m + 1); }}
           onJumpToday={() => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1); }}
-          onOpenDay={(date) => navigation.navigate('Day', { date })}
+          onOpenDay={(date: string) => navigation.navigate('Day', { date })}
         />
       ) : (
         <ScrollView style={styles.flex1} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-          {activeHabits.map(h => {
+          {activeHabits.map((h: Habit) => {
             const st = statsOf(h);
-            const recent = recentDayStates(h, entriesByHabit.get(h.id) ?? [], 7, todayString());
+            const recent = recentDayStates(h, entriesByHabit.get(h.id) ?? [], 7, today);
             return (
               <Card key={h.id} onPress={() => setSelected(h.id)} style={styles.overviewRow}>
                 <View style={styles.overviewMain}>
@@ -122,7 +185,7 @@ export default function StatsScreen() {
                   </View>
                 </View>
                 <View style={styles.dotsRow}>
-                  {recent.map(r => {
+                  {recent.map((r: any) => {
                     const sc = stateColor(r.state, colors);
                     return (
                       <View
@@ -141,11 +204,11 @@ export default function StatsScreen() {
           <TabBarSpacer />
         </ScrollView>
       )}
-    </Screen>
+    </>
   );
 }
 
-/** 判定结果 → 格子配色（语义色：达成绿 / 部分黄 / 失守红） */
+/** 判定结果 → 格子配色 */
 function stateColor(state: string, colors: ReturnType<typeof useTheme>): StateColor {
   switch (state) {
     case 'success': return { bg: colors.success, icon: 'checkmark-sharp', iconColor: colors.ink };
@@ -170,10 +233,10 @@ function HabitDetail({ habit, entries, stats, year, month, onPrevMonth, onNextMo
   const colors = useTheme();
   const today = todayString();
   const c = habitColor(habit.color);
+  const now = new Date();
 
   const byDate = useMemo(() => new Map(entries.map(e => [e.date, e])), [entries]);
 
-  // 月度网格
   const firstDay = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
   const cells: (number | null)[] = [];
@@ -181,9 +244,8 @@ function HabitDetail({ habit, entries, stats, year, month, onPrevMonth, onNextMo
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
-  const isCurrentMonth = year === nowYear() && month === nowMonth();
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
 
-  // 月度汇总
   let monthSuccess = 0;
   let monthFail = 0;
   for (let d = 1; d <= daysInMonth; d++) {
@@ -194,7 +256,6 @@ function HabitDetail({ habit, entries, stats, year, month, onPrevMonth, onNextMo
     else if (st === 'fail' || st === 'partial') monthFail++;
   }
 
-  // 最近记录
   const recent = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   const maxWeekday = Math.max(...stats.weekday, 1);
 
@@ -409,8 +470,26 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   );
 }
 
-function nowYear(): number { return new Date().getFullYear(); }
-function nowMonth(): number { return new Date().getMonth() + 1; }
+const tabsStyles = StyleSheet.create({
+  wrap: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+    paddingRight: 20,
+  },
+  shadow: { position: 'absolute', top: 14, left: 20, right: 4, bottom: 8 },
+  row: { flexDirection: 'row', borderWidth: 2 },
+  seg: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+  },
+  segDivider: { borderRightWidth: 2, borderRightColor: '#141414' },
+  segText: { letterSpacing: 1 },
+});
 
 const styles = StyleSheet.create({
   flex1: { flex: 1 },
