@@ -9,6 +9,7 @@ export type RootParamList = {
   TaskEdit: { taskId?: number; title?: string } | undefined;
   TaskDetail: { taskId: number };
   AISettings: undefined;
+  McpKeys: undefined;
 };
 
 export type TabParamList = {

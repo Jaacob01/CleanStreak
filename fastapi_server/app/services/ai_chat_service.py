@@ -1,4 +1,10 @@
-"""AI 聊天与分析编排：构建上下文 → 组装消息 → 调 LLM（流式）→ 落库"""
+"""AI 聊天与分析编排：构建上下文 → 组装消息 → 调 LLM → 落库
+
+chat 为 agent loop：模型可调用 ai_tools 注册表中的工具（查询/增删改查业务数据），
+工具执行结果回灌对话继续推理，直到产出最终文本回复。历史只落 user/assistant 文本，
+工具调用的中间过程仅存在于本轮内存中，但每次调用都在 ai_tool_calls 审计表留痕。
+"""
+import json
 from collections.abc import AsyncIterator
 from datetime import timedelta
 
@@ -7,22 +13,27 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import AIChatMessage, User
-from app.services import ai_client, ai_config_service
+from app.services import ai_client, ai_config_service, ai_tools
 from app.services.ai_context_service import (
-    build_context, context_to_json, resolve_range, today_cn,
+    WEEKDAY_NAMES, build_context, context_to_json, resolve_range, today_cn,
 )
 
 HISTORY_TURNS = 10          # 带入对话的最近消息条数
 HISTORY_MAX_CHARS = 8000    # 历史拼接字符上限
+MAX_TOOL_ROUNDS = 6         # 单轮对话最多的工具调用轮数
 
 DEFAULT_CHAT_PROMPT = (
-    "你是 CleanStreak（习惯追踪应用）的个人数据分析助手，帮助用户回顾和分析自己的习惯打卡与任务完成情况。\n"
-    "规则：\n"
-    "1. 只基于提供的【用户数据上下文】回答，结论必须引用其中的具体数字；\n"
-    "2. 数据中没有的信息，明确说明「数据中未包含」，严禁编造；\n"
-    "3. 用中文回答，语言简洁友好，适当分点；\n"
-    "4. 只回答与用户习惯/任务数据相关的问题，无关话题礼貌拒绝；\n"
-    "5. 给建议时要具体、可执行，不要空泛。"
+    "你是 CleanStreak（习惯追踪应用）的个人助理，既能基于用户数据做分析答疑，"
+    "也能直接替用户执行操作（创建/完成任务、习惯打卡与计数、创建修改习惯、分组项目管理、删除等）。\n"
+    "工具使用规则：\n"
+    "1. 操作前必须先查询拿到目标 id（list_tasks / list_habits / list_groups 等），严禁凭空猜测 id；\n"
+    "2. 日期一律用 YYYY-MM-DD，「今天」以下方系统提供的当前日期为准；\n"
+    "3. 删除类操作不可恢复：必须先向用户复述目标并获得明确同意，才能带 confirm=true 调用；"
+    "未确认时先询问，不要替用户做主；\n"
+    "4. 每次操作后用一句话向用户确认结果；只做用户要求的事，不要顺手改动其他数据；\n"
+    "5. 分析类问题基于【用户数据上下文】回答并引用具体数字；需要更细/更早的数据时用工具查询；\n"
+    "6. 数据中没有的信息明确说明，严禁编造；与习惯/任务无关的请求礼貌拒绝；\n"
+    "7. 用中文回答，语言简洁友好，适当分点。"
 )
 
 DEFAULT_ANALYZE_PROMPT = (
@@ -62,29 +73,74 @@ async def _load_history(db: AsyncSession, user_id: int, turns: int) -> list[dict
     return list(reversed(kept))
 
 
-async def chat_stream(db: AsyncSession, user: User, message: str) -> AsyncIterator[str]:
-    """聊天：流式产出回复片段；流结束后把本轮问答落库（失败则不落库，便于重试）"""
+async def chat_stream(db: AsyncSession, user: User, message: str) -> AsyncIterator[tuple[str, dict]]:
+    """聊天（agent loop）：产出 ("delta", 文本片段) 与 ("tool", 工具执行事件)；流结束后把本轮问答落库"""
     row = await ai_config_service.get_settings_row(db)
     _ensure_ready(row)
 
     today = today_cn()
     context = await build_context(db, user.id, today - timedelta(days=29), today)
     system = row.system_prompt_chat or DEFAULT_CHAT_PROMPT
-    system += f"\n\n当前日期：{today.isoformat()}\n\n【用户数据上下文】\n{context_to_json(context)}"
+    weekday = WEEKDAY_NAMES[(today.weekday() + 1) % 7]
+    system += (
+        f"\n\n当前日期：{today.isoformat()}（{weekday}）\n\n"
+        f"【用户数据上下文】（最近 30 天概览，更细/更早数据请用工具查询）\n{context_to_json(context)}"
+    )
 
     messages: list[dict] = [{"role": "system", "content": system}]
     messages.extend(await _load_history(db, user.id, HISTORY_TURNS))
     messages.append({"role": "user", "content": message})
 
-    reply_parts: list[str] = []
-    async for delta in ai_client.chat_completion_stream(row, messages):
-        reply_parts.append(delta)
-        yield delta
+    final_reply = ""
+    for rnd in range(MAX_TOOL_ROUNDS):
+        # 最后一轮不再提供工具，强制模型基于已获取的信息作答，保证收敛
+        tools = ai_tools.openai_schemas() if rnd < MAX_TOOL_ROUNDS - 1 else None
 
-    reply = "".join(reply_parts)
-    db.add(AIChatMessage(user_id=user.id, role="user", content=message))
-    db.add(AIChatMessage(user_id=user.id, role="assistant", content=reply))
-    await db.flush()
+        parts: list[str] = []
+        tool_calls: list[dict] = []
+        async for kind, payload in ai_client.stream_completion(row, messages, tools=tools):
+            if kind == "delta":
+                parts.append(payload)
+                yield "delta", payload
+            else:
+                tool_calls = payload
+        final_reply = "".join(parts)
+
+        if not tool_calls:
+            break
+
+        # 把本轮带工具请求的 assistant 消息与各工具结果回灌，继续推理
+        messages.append({
+            "role": "assistant",
+            "content": final_reply or None,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)},
+                }
+                for tc in tool_calls
+            ],
+        })
+        for tc in tool_calls:
+            result, ok = await ai_tools.execute_tool(db, user.id, tc["name"], tc["arguments"])
+            td = ai_tools.TOOLS.get(tc["name"])
+            yield "tool", {
+                "name": tc["name"],
+                "label": td.label if td else tc["name"],
+                "ok": ok,
+                "detail": ai_tools.brief_result(result) if ok else str(result.get("error", ""))[:100],
+            }
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": json.dumps(result, ensure_ascii=False, default=str),
+            })
+
+    if final_reply:
+        db.add(AIChatMessage(user_id=user.id, role="user", content=message))
+        db.add(AIChatMessage(user_id=user.id, role="assistant", content=final_reply))
+        await db.flush()
 
 
 async def analyze_stream(

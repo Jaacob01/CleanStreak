@@ -17,6 +17,7 @@ import ManageScreen from '../screens/ManageScreen';
 import StatsScreen from '../screens/StatsScreen';
 import AIScreen from '../screens/AIScreen';
 import AISettingsScreen from '../screens/AISettingsScreen';
+import McpKeysScreen from '../screens/McpKeysScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import LoginScreen from '../screens/LoginScreen';
 import DayScreen from '../screens/DayScreen';
@@ -95,6 +96,7 @@ function InnerNavigator() {
       <Stack.Screen name="TaskEdit" component={TaskEditScreen} />
       <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
       <Stack.Screen name="AISettings" component={AISettingsScreen} />
+      <Stack.Screen name="McpKeys" component={McpKeysScreen} />
     </Stack.Navigator>
   );
 }

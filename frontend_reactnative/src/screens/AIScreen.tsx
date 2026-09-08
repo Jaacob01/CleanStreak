@@ -20,6 +20,7 @@ import { useToast } from '../ui/toast';
 import { confirmAsync } from '../ui/confirm';
 import { TabBarSpacer } from '../ui/TabBarSpacer';
 import { api_aiChatStream, api_aiChatClear, api_aiChatHistory, api_aiStatus } from '../api/ai';
+import type { AIToolEvent } from '../api/ai';
 import type { RootNav } from '../navigation/types';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -31,13 +32,15 @@ interface LocalMsg {
   content: string;
   /** 正在流式生成中：内容随分片增长，气泡尾带闪烁光标 */
   streaming?: boolean;
+  /** 本条回复过程中 AI 执行过的工具（查询/建任务/打卡…） */
+  tools?: AIToolEvent[];
 }
 
 const QUICK_ASKS: { icon: IconName; label: string }[] = [
   { icon: 'flame', label: '本周习惯总结' },
   { icon: 'warning', label: '哪个习惯最难坚持？' },
-  { icon: 'checkbox', label: '任务积压分析' },
-  { icon: 'bulb', label: '给我一些改进建议' },
+  { icon: 'add-circle', label: '帮我建个任务' },
+  { icon: 'checkbox', label: '看看今天还有什么没做' },
 ];
 
 export default function AIScreen() {
@@ -115,12 +118,17 @@ export default function AIScreen() {
     busyRef.current = true;
     const ac = new AbortController();
     abortRef.current = ac;
+    const toolAcc: AIToolEvent[] = [];
     setTimeout(pinToBottom, 40);
     try {
       await api_aiChatStream(text, delta => {
         setMessages(prev => prev.map(m => (m.key === replyKey ? { ...m, content: m.content + delta } : m)));
         pinToBottom();
-      }, ac.signal);
+      }, ac.signal, ev => {
+        toolAcc.push(ev);
+        setMessages(prev => prev.map(m => (m.key === replyKey ? { ...m, tools: [...toolAcc] } : m)));
+        pinToBottom();
+      });
     } catch (e: any) {
       const aborted = e?.name === 'AbortError';
       if (!aborted) toast.show(e?.message ?? 'AI 调用失败', 'error');
@@ -206,7 +214,7 @@ export default function AIScreen() {
               <Ionicons name="sparkles" size={26} color={colors.ink} />
             </View>
             <T variant="h2" style={styles.heroTitle}>和你的数据聊聊</T>
-            <T variant="cap" style={styles.heroSub}>基于习惯打卡与任务数据答疑，试试这些：</T>
+            <T variant="cap" style={styles.heroSub}>能答疑分析，也能替你打卡、建任务，试试这些：</T>
             <View style={styles.heroChips}>
               {QUICK_ASKS.map(q => (
                 <Pressable
@@ -223,7 +231,7 @@ export default function AIScreen() {
                 </Pressable>
               ))}
             </View>
-            <T variant="cap" style={styles.heroFoot}>回复为流式生成 · 数据仅覆盖最近 30 天</T>
+            <T variant="cap" style={styles.heroFoot}>回复为流式生成 · 删除类操作会先跟你确认</T>
           </View>
         ) : (
           <FlatList
@@ -284,7 +292,7 @@ export default function AIScreen() {
   );
 }
 
-/** 单条消息气泡：AI 左侧带头像块，用户右侧对齐 */
+/** 单条消息气泡：AI 左侧带头像块，用户右侧对齐；AI 气泡内先列本轮执行过的工具 */
 function Bubble({ msg }: { msg: LocalMsg }) {
   const colors = useTheme();
   const isUser = msg.role === 'user';
@@ -306,6 +314,16 @@ function Bubble({ msg }: { msg: LocalMsg }) {
         ) : (
           // AI 回复为 Markdown:标题/表格/列表等走 MiniMarkdown 渲染;流式未闭合语法自动降级为文本
           <>
+            {msg.tools?.map((t, i) => (
+              <View key={`t${i}`} style={[styles.toolChip, { borderColor: colors.ink }]}>
+                <Ionicons
+                  name={t.ok ? 'checkmark-circle' : 'alert-circle'}
+                  size={12}
+                  color={t.ok ? colors.primary : colors.danger}
+                />
+                <T variant="cap" style={styles.toolChipText}>{t.label}{t.detail ? ` · ${t.detail}` : ''}</T>
+              </View>
+            ))}
             {msg.content ? <MiniMarkdown text={msg.content} /> : null}
             {msg.streaming ? (
               <View style={styles.cursorRow}>
@@ -366,6 +384,11 @@ const styles = StyleSheet.create({
   },
   bubble: { borderWidth: 2, paddingHorizontal: 12, paddingVertical: 9, maxWidth: '94%' },
   bubbleText: { lineHeight: 21, textTransform: 'none', letterSpacing: 0 },
+  toolChip: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4,
+    borderWidth: 1, paddingHorizontal: 7, paddingVertical: 3, marginBottom: 6,
+  },
+  toolChipText: { textTransform: 'none', letterSpacing: 0, fontSize: 10 },
   cursorRow: { height: 20, justifyContent: 'center' },
   // 输入坞
   dock: {

@@ -3,6 +3,7 @@
 chat 与 analyze 为 SSE 流式返回（text/event-stream）：
     data: {"meta": {...}}   仅 analyze，元信息先行
     data: {"delta": "..."}  文本片段，多次
+    data: {"tool": {...}}   仅 chat，工具执行事件 {name, label, ok, detail}
     data: {"error": "..."}  出错时替代后续内容
     data: [DONE]            结束标记
 """
@@ -58,11 +59,7 @@ async def status(user: User = Depends(get_current_user), db: AsyncSession = Depe
 
 @router.post("/chat")
 async def chat(body: AIChatRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    async def gen():
-        async for delta in ai_chat_service.chat_stream(db, user, body.message.strip()):
-            yield "delta", delta
-
-    return _sse_wrapper(gen())
+    return _sse_wrapper(ai_chat_service.chat_stream(db, user, body.message.strip()))
 
 
 @router.post("/chat/history", response_model=AIHistoryResponse)

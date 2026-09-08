@@ -5,6 +5,7 @@ DeepSeek / 通义千问 / Kimi / 智谱 / SiliconFlow / Ollama / vLLM 等均兼�
 """
 import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
@@ -30,6 +31,7 @@ def _prepare_request(
     api_key_override: str | None,
     max_tokens_override: int | None,
     stream: bool,
+    tools: list[dict] | None = None,
 ) -> tuple[str, dict, dict]:
     """组装 URL / 请求头 / 请求体；api_key 只在服务端解密使用"""
     url = normalize_base_url(ai.base_url)
@@ -48,6 +50,8 @@ def _prepare_request(
         "max_tokens": max_tokens_override or ai.max_tokens,
         "stream": stream,
     }
+    if tools:
+        payload["tools"] = tools
     return url, headers, payload
 
 
@@ -109,21 +113,28 @@ async def chat_completion(
     return content
 
 
-async def chat_completion_stream(
+async def stream_completion(
     ai: AISettings,
     messages: list[dict],
     *,
+    tools: list[dict] | None = None,
     api_key_override: str | None = None,
     timeout: float = REQUEST_TIMEOUT,
     max_tokens_override: int | None = None,
-) -> AsyncIterator[str]:
-    """流式补全：逐段产出文本 delta；连接/HTTP 错误抛带友好信息的 HTTPException(502)"""
+) -> AsyncIterator[tuple[str, Any]]:
+    """流式补全（支持 tools）。产出事件元组：
+        ("delta", str)                          文本片段
+        ("tool_calls", [{id, name, arguments}]) 模型请求工具调用（流结束时一次性产出）
+    连接/HTTP 错误抛带友好信息的 HTTPException(502)。
+    """
     url, headers, payload = _prepare_request(
         ai, messages, api_key_override=api_key_override,
-        max_tokens_override=max_tokens_override, stream=True,
+        max_tokens_override=max_tokens_override, stream=True, tools=tools,
     )
 
     got_any = False
+    # 流内 tool_calls 按 index 分片到达，累积后一次性产出
+    tool_acc: dict[int, dict] = {}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream("POST", url, json=payload, headers=headers) as resp:
@@ -145,18 +156,56 @@ async def chat_completion_stream(
                     if chunk.get("error"):
                         msg = chunk["error"].get("message") or "AI 服务流式返回错误"
                         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=msg)
-                    delta = (chunk.get("choices") or [{}])[0].get("delta", {}).get("content")
-                    if delta:
+                    delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
+                    if delta.get("content"):
                         got_any = True
-                        yield delta
+                        yield "delta", delta["content"]
+                    for tc in delta.get("tool_calls") or []:
+                        got_any = True
+                        idx = tc.get("index") or 0
+                        slot = tool_acc.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                        if tc.get("id"):
+                            slot["id"] = tc["id"]
+                        fn = tc.get("function") or {}
+                        if fn.get("name"):
+                            slot["name"] = fn["name"]
+                        if fn.get("arguments"):
+                            slot["arguments"] += fn["arguments"]
     except (httpx.TimeoutException, httpx.HTTPError) as e:
         raise _wrap_connect_error(e)
 
-    if not got_any:
+    if tool_acc:
+        calls = []
+        for idx in sorted(tool_acc):
+            s = tool_acc[idx]
+            try:
+                args = json.loads(s["arguments"]) if s["arguments"].strip() else {}
+            except ValueError:
+                args = {"_raw": s["arguments"][:2000]}  # 非法 JSON 交给工具层报错
+            calls.append({"id": s["id"] or f"call_{idx}", "name": s["name"], "arguments": args})
+        yield "tool_calls", calls
+    elif not got_any:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI 返回内容为空（可能触发了内容过滤），请换个问法",
         )
+
+
+async def chat_completion_stream(
+    ai: AISettings,
+    messages: list[dict],
+    *,
+    api_key_override: str | None = None,
+    timeout: float = REQUEST_TIMEOUT,
+    max_tokens_override: int | None = None,
+) -> AsyncIterator[str]:
+    """流式补全：逐段产出文本 delta（不含工具调用的简单场景用）；连接/HTTP 错误抛带友好信息的 HTTPException(502)"""
+    async for kind, payload in stream_completion(
+        ai, messages, api_key_override=api_key_override,
+        timeout=timeout, max_tokens_override=max_tokens_override,
+    ):
+        if kind == "delta":
+            yield payload
 
 
 def _friendly_http_error(code: int, resp: httpx.Response) -> str:

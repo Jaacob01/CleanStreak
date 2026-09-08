@@ -136,6 +136,13 @@ export default function ProfileScreen() {
           />
         )}
         <MenuRow
+          icon="key-outline"
+          iconBg={colors.primary}
+          title="MCP 密钥"
+          sub="让 hermes 等 AI 助手管理你的数据"
+          onPress={() => navigation.navigate('McpKeys')}
+        />
+        <MenuRow
           icon="download-outline"
           iconBg={colors.success}
           title="数据导出"

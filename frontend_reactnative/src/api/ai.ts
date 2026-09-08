@@ -1,6 +1,6 @@
 /**
  * AI API — 聊天 / 分析 / 状态 / 管理端配置
- * 聊天与分析为 SSE 流式：data: {"delta"...} / {"meta"...} / {"error"...}，data: [DONE] 结束
+ * 聊天与分析为 SSE 流式：data: {"delta"...} / {"meta"...} / {"tool"...} / {"error"...}，data: [DONE] 结束
  */
 import { fetch as streamFetch } from 'expo/fetch';
 import { request, BASE_URL, getToken } from './client';
@@ -29,10 +29,19 @@ export interface AISettings {
 
 export type AIPreset = 'day' | 'week' | 'month' | 'year' | 'custom';
 
-/** SSE 流内事件（delta=文本片段 meta=分析元信息 error=业务错误） */
+/** 聊天内 AI 工具执行事件（查询/建任务/打卡等操作） */
+export interface AIToolEvent {
+  name: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+/** SSE 流内事件（delta=文本片段 meta=分析元信息 tool=工具执行 error=业务错误） */
 interface SSEEvent {
   delta?: string;
   error?: string;
+  tool?: AIToolEvent;
   meta?: { preset?: string; label: string; date_from: string; date_to: string };
 }
 
@@ -123,14 +132,16 @@ async function streamSSE(
   }
 }
 
-/** 流式聊天：每个回复片段回调一次 onDelta；出错抛异常（含流内 error 事件）；signal 可中止 */
+/** 流式聊天：回复片段回调 onDelta，工具执行事件回调 onTool；出错抛异常（含流内 error 事件）；signal 可中止 */
 export async function api_aiChatStream(
   message: string,
   onDelta: (delta: string) => void,
   signal?: AbortSignal,
+  onTool?: (ev: AIToolEvent) => void,
 ): Promise<void> {
   await streamSSE('/api/v1/ai/chat', { message }, ev => {
     if (typeof ev.delta === 'string') onDelta(ev.delta);
+    else if (ev.tool) onTool?.(ev.tool);
     else if (ev.error) throw new Error(ev.error);
   }, signal);
 }

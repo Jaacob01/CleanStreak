@@ -174,3 +174,40 @@ class AIChatMessage(Base):
     __table_args__ = (
         Index("ix_ai_chat_user_time", "user_id", "id"),
     )
+
+
+class AIToolCall(Base):
+    """AI 工具调用审计（App 聊天与 MCP 端点共用，按用户隔离）"""
+    __tablename__ = "ai_tool_calls"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    tool = Column(String(64), nullable=False)
+    arguments = Column(JSON, nullable=False, default=dict)
+    # 执行结果 JSON（超长截断），ok=False 时通常是 {"error": ...}
+    result = Column(String, nullable=True)
+    ok = Column(Boolean, nullable=False, default=True)
+    source = Column(String(10), nullable=False, default="chat")  # chat / mcp
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("ix_ai_tool_user_time", "user_id", "id"),
+    )
+
+
+class McpApiKey(Base):
+    """用户级 MCP 访问密钥（「我的」页面自助生成/吊销）；prefix 存明文前缀用于检索，全量 Fernet 加密"""
+    __tablename__ = "mcp_api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    label = Column(String(50), nullable=False, default="默认密钥", server_default="默认密钥")
+    prefix = Column(String(12), nullable=False)  # 明文前缀（cs_ + 8 hex），用于鉴权检索与列表展示
+    key_encrypted = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_mcp_keys_prefix", "prefix"),
+        Index("ix_mcp_keys_user_id", "user_id"),
+    )
