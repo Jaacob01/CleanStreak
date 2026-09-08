@@ -71,11 +71,19 @@ export function TaskListPanel({ active }: { active?: boolean }) {
     }
   });
 
-  // 按用户自己的分组聚合（隐藏空分组）
-  const grouped = groups.map(g => ({
-    group: g,
-    tasks: filtered.filter(t => t.group === g.name),
-  })).filter(x => x.tasks.length > 0);
+  // 已登记分组在前；任务里出现但未登记的分组（老数据等）兜底追加，任何任务都不静默丢失
+  const knownNames = new Set(groups.map(g => g.name));
+  const extraNames = [...new Set(filtered.map(t => t.group).filter(n => !knownNames.has(n)))];
+  const sections = [
+    ...groups.map(g => ({
+      key: `g${g.id}`, name: g.name, color: g.color,
+      tasks: filtered.filter(t => t.group === g.name),
+    })),
+    ...extraNames.map(name => ({
+      key: `x${name}`, name, color: '#A8A093',
+      tasks: filtered.filter(t => t.group === name),
+    })),
+  ].filter(s => s.tasks.length > 0);
 
   // 快速添加的分组色块
   const quickGroupColor = groups.find(g => g.name === quickGroup)?.color ?? colors.surface;
@@ -127,17 +135,17 @@ export function TaskListPanel({ active }: { active?: boolean }) {
       </View>
 
       {/* 分组展示 */}
-      {loaded && grouped.length === 0 && filter < 3 && (
+      {loaded && sections.length === 0 && filter < 3 && (
         <EmptyState icon="checkbox-outline" title="暂无待办" sub="在下方快速添加任务" />
       )}
 
-      {grouped.map(({ group, tasks: gTasks }) => (
-        <View key={group.id} style={styles.groupSection}>
+      {sections.map(sec => (
+        <View key={sec.key} style={styles.groupSection}>
           <View style={styles.groupHeader}>
-            <View style={[styles.groupDot, { backgroundColor: group.color }]} />
-            <T variant="title">{group.name} ({gTasks.length})</T>
+            <View style={[styles.groupDot, { backgroundColor: sec.color }]} />
+            <T variant="title">{sec.name} ({sec.tasks.length})</T>
           </View>
-          {gTasks.map(task => (
+          {sec.tasks.map(task => (
             <TaskCard
               key={task.id}
               task={task}

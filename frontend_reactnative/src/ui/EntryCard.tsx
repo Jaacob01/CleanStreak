@@ -1,6 +1,7 @@
 /**
  * 打卡卡片：某习惯在某天的记录展示与快捷操作
  * 正向/反向 × 简单打卡/数量目标 四种形态共用
+ * 数量目标一天可打卡多次，标签/备注按「次」独立记录（entry.details）
  */
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -13,7 +14,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useToast } from './toast';
 import { confirmAsync } from './confirm';
 import { habitColor } from '../theme';
-import { Habit, HabitEntry } from '../db/types';
+import { Habit, HabitEntry, HabitEntryDetail } from '../db/types';
 import { bumpEntryValue, deleteEntry, saveEntry, toggleCheckEntry } from '../db';
 import {
   dayState, describeFrequency, describeGoal, isScheduledDay, todayString,
@@ -29,8 +30,62 @@ interface Props {
   onChanged: () => void;
 }
 
+/** 编辑表单里一次打卡的草稿（数量/时间以文本暂存，保存时解析） */
+interface DraftDetail {
+  valueText: string;
+  timeText: string; // 本地 时:分
+  tags: string[];
+  notes: string;
+}
+
 function fmtNum(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+/** 打卡时刻 → 本地 HH:MM；无法解析返回空串 */
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function nowTimeText(): string {
+  return fmtTime(new Date().toISOString());
+}
+
+/** 「时:分」+ 记录日期（本地时区）→ UTC ISO；留空视为当前时刻，格式非法返回 null */
+function timeTextToIso(date: string, text: string): string | null {
+  const t = text.trim();
+  if (!t) return new Date().toISOString();
+  const m = /^(\d{1,2})[:：](\d{1,2})$/.exec(t);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!dm) return null;
+  const d = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), h, min);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** 单条记录的按次明细；旧数据（details 为空）整条折算成一次，时刻取记录创建时间 */
+function detailsOf(entry: HabitEntry | null): HabitEntryDetail[] {
+  if (!entry) return [];
+  if (entry.details && entry.details.length > 0) return entry.details;
+  return [{ value: entry.value, time: entry.created_at ?? null, tags: entry.tags ?? [], notes: entry.notes ?? null }];
+}
+
+function toDrafts(details: HabitEntryDetail[]): DraftDetail[] {
+  if (details.length === 0) {
+    return [{ valueText: '1', timeText: nowTimeText(), tags: [], notes: '' }];
+  }
+  return details.map(d => ({
+    valueText: fmtNum(d.value),
+    timeText: fmtTime(d.time) || nowTimeText(),
+    tags: d.tags ?? [],
+    notes: d.notes ?? '',
+  }));
 }
 
 export function EntryCard({ habit, date, entry, streak, onChanged }: Props) {
@@ -44,18 +99,18 @@ export function EntryCard({ habit, date, entry, streak, onChanged }: Props) {
   const isRelapseForm = habit.direction === 'negative' && habit.goal_type === 'check' && !entry;
 
   const [expanded, setExpanded] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [valueText, setValueText] = useState('0');
+  const [drafts, setDrafts] = useState<DraftDetail[]>(() => toDrafts(detailsOf(entry)));
   const [busy, setBusy] = useState(false);
 
-  const metaKey = `${entry?.id ?? 0}|${entry?.value ?? 0}|${entry?.notes ?? ''}|${(entry?.tags ?? []).join('|')}`;
+  const metaKey = `${entry?.id ?? 0}|${JSON.stringify(detailsOf(entry))}`;
   useEffect(() => {
-    setNotes(entry?.notes ?? '');
-    setTags(entry?.tags ?? []);
-    setValueText(entry ? String(entry.value) : '0');
+    setDrafts(toDrafts(detailsOf(entry)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metaKey]);
+
+  const updateDraft = (i: number, patch: Partial<DraftDetail>) => {
+    setDrafts(ds => ds.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+  };
 
   const run = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -99,14 +154,36 @@ export function EntryCard({ habit, date, entry, streak, onChanged }: Props) {
 
   const doSaveMeta = () => void run(async () => {
     if (habit.goal_type === 'count') {
-      const v = parseFloat(valueText);
-      if (Number.isNaN(v) || v <= 0) {
+      // 按次保存：value>0 且时间合法的次才有效；全部无效视同删除当天记录
+      const parsed: HabitEntryDetail[] = [];
+      for (const d of drafts) {
+        const v = parseFloat(d.valueText);
+        if (Number.isNaN(v) || v <= 0) continue;
+        const iso = timeTextToIso(date, d.timeText);
+        if (!iso) { toast.show('时间格式应为 时:分，如 9:05', 'info'); return; }
+        parsed.push({
+          value: v,
+          time: iso,
+          tags: d.tags,
+          notes: d.notes.trim() ? d.notes : null,
+        });
+      }
+      if (parsed.length === 0) {
         if (entry) await deleteEntry(habit.id, date);
+        else { toast.show('请先填写有效的数量', 'info'); return; }
       } else {
-        await saveEntry(habit.user_id, habit.id, date, { value: v, tags, notes });
+        await saveEntry(habit.user_id, habit.id, date, { details: parsed });
       }
     } else {
-      await saveEntry(habit.user_id, habit.id, date, { value: 1, tags, notes });
+      const d0 = drafts[0];
+      const iso = timeTextToIso(date, d0?.timeText ?? '');
+      if (!iso) { toast.show('时间格式应为 时:分，如 9:05', 'info'); return; }
+      const tags = d0?.tags ?? [];
+      const notes = d0?.notes.trim() ? d0.notes : null;
+      await saveEntry(habit.user_id, habit.id, date, {
+        value: 1, tags, notes,
+        details: [{ value: 1, time: iso, tags, notes }],
+      });
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     toast.show('已保存', 'success');
@@ -150,7 +227,25 @@ export function EntryCard({ habit, date, entry, streak, onChanged }: Props) {
     return { pct, fill };
   })() : null;
 
-  const hasMetaSummary = !!entry && ((entry.tags.length > 0 && habit.enable_tags) || !!entry.notes);
+  // 按次明细摘要（折叠态）：每-次前缀显示打卡时刻（缺时刻时退回序号）
+  const detailList = detailsOf(entry);
+  const hasMetaSummary = !!entry && ((habit.enable_tags && entry.tags.length > 0) || !!entry.notes);
+  const metaSummaryText = (() => {
+    const multi = detailList.length > 1;
+    const segs = detailList
+      .map((d, i) => {
+        const prefix = multi ? (fmtTime(d.time) || String(i + 1)) : '';
+        const seg = [
+          habit.enable_tags && d.tags.length > 0 ? d.tags.join(' · ') : null,
+          d.notes,
+        ].filter(Boolean).join(' | ');
+        return `${prefix} ${seg}`.trim();
+      })
+      .filter(Boolean);
+    if (segs.length === 0) return detailList.length > 1 ? `共${detailList.length}次` : '';
+    const head = detailList.length > 1 ? `共${detailList.length}次｜` : '';
+    return head + segs.join(' ｜ ');
+  })();
 
   return (
     <View style={styles.wrap}>
@@ -234,37 +329,103 @@ export function EntryCard({ habit, date, entry, streak, onChanged }: Props) {
           </View>
         )}
 
-        {/* 记录详情摘要 */}
-        {hasMetaSummary && !expanded && (
+        {/* 记录详情摘要（折叠态：按次展示） */}
+        {!expanded && entry && (hasMetaSummary || detailList.length > 1) && metaSummaryText && (
           <T variant="cap" style={styles.metaSummary} numberOfLines={2}>
-            {[
-              habit.enable_tags && entry!.tags.length > 0 ? entry!.tags.join(' · ') : null,
-              entry!.notes,
-            ].filter(Boolean).join(' | ')}
+            {metaSummaryText}
           </T>
         )}
 
-        {/* 编辑详情 */}
+        {/* 编辑详情：标签/备注按「次」独立 */}
         {expanded && (
           <View style={[styles.metaForm, { borderTopColor: colors.borderLight }]}>
-            {habit.goal_type === 'count' && (
-              <Input
-                label={`数量${habit.unit ? `（${habit.unit}）` : ''}`}
-                value={valueText}
-                onChangeText={setValueText}
-                keyboardType="numeric"
-              />
-            )}
-            {habit.enable_tags && habit.tags.length > 0 && (
-              <MultiSelect
-                label="标签"
-                values={tags}
-                options={habit.tags.map(t => ({ label: t, value: t }))}
-                onChange={setTags}
-              />
-            )}
-            {habit.enable_notes && (
-              <Input label="备注" value={notes} onChangeText={setNotes} placeholder="可选" multiline />
+            {habit.goal_type === 'count' ? (
+              <>
+                {drafts.map((d, i) => (
+                  <View key={i} style={drafts.length > 1 ? styles.draftGroup : undefined}>
+                    {drafts.length > 1 && (
+                      <View style={styles.draftHeader}>
+                        <T variant="cap">
+                          {d.timeText.trim() ? `第 ${i + 1} 次 · ${d.timeText.trim()}` : `第 ${i + 1} 次`}
+                        </T>
+                        <Pressable
+                          hitSlop={6}
+                          onPress={() => setDrafts(ds => ds.filter((_, idx) => idx !== i))}
+                          style={({ pressed }) => [styles.draftRemove, pressed && { opacity: 0.6 }]}
+                        >
+                          <Ionicons name="close-circle" size={18} color={colors.danger} />
+                        </Pressable>
+                      </View>
+                    )}
+                    <View style={styles.draftRow}>
+                      <View style={styles.draftNumCol}>
+                        <Input
+                          label={`数量${habit.unit ? `（${habit.unit}）` : ''}`}
+                          value={d.valueText}
+                          onChangeText={v => updateDraft(i, { valueText: v })}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View style={styles.draftTimeCol}>
+                        <Input
+                          label="时间"
+                          value={d.timeText}
+                          onChangeText={v => updateDraft(i, { timeText: v })}
+                          placeholder="9:05"
+                        />
+                      </View>
+                    </View>
+                    {habit.enable_tags && habit.tags.length > 0 && (
+                      <MultiSelect
+                        label="标签"
+                        values={d.tags}
+                        options={habit.tags.map(t => ({ label: t, value: t }))}
+                        onChange={tags => updateDraft(i, { tags })}
+                      />
+                    )}
+                    {habit.enable_notes && (
+                      <Input
+                        label="备注"
+                        value={d.notes}
+                        onChangeText={v => updateDraft(i, { notes: v })}
+                        placeholder="可选"
+                        multiline
+                      />
+                    )}
+                  </View>
+                ))}
+                <GhostButton
+                  title="再记一次"
+                  icon="add-sharp"
+                  onPress={() => setDrafts(ds => [...ds, { valueText: '1', timeText: nowTimeText(), tags: [], notes: '' }])}
+                />
+              </>
+            ) : (
+              <>
+                <Input
+                  label="时间"
+                  value={drafts[0]?.timeText ?? ''}
+                  onChangeText={v => updateDraft(0, { timeText: v })}
+                  placeholder="9:05"
+                />
+                {habit.enable_tags && habit.tags.length > 0 && (
+                  <MultiSelect
+                    label="标签"
+                    values={drafts[0]?.tags ?? []}
+                    options={habit.tags.map(t => ({ label: t, value: t }))}
+                    onChange={tags => updateDraft(0, { tags })}
+                  />
+                )}
+                {habit.enable_notes && (
+                  <Input
+                    label="备注"
+                    value={drafts[0]?.notes ?? ''}
+                    onChangeText={v => updateDraft(0, { notes: v })}
+                    placeholder="可选"
+                    multiline
+                  />
+                )}
+              </>
             )}
             <PrimaryButton
               title={isRelapseForm ? '确认记录' : '保 存'}
@@ -337,6 +498,15 @@ const styles = StyleSheet.create({
   counterNum: { fontSize: 16 },
   metaSummary: { marginTop: 8, textTransform: 'none', letterSpacing: 0 },
   metaForm: { marginTop: 12, paddingTop: 12, borderTopWidth: 1 },
+  draftGroup: { marginTop: 4, marginBottom: 8 },
+  draftHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  draftRemove: { padding: 2 },
+  draftRow: { flexDirection: 'row', gap: 10 },
+  draftNumCol: { flex: 1 },
+  draftTimeCol: { width: 96 },
   stepWrap: { paddingRight: 2, paddingBottom: 2 },
   stepShadow: { position: 'absolute', top: 2, left: 2, right: 0, bottom: 0 },
   stepBtn: {

@@ -400,6 +400,7 @@ function HabitDetail({ habit, entries, stats, year, month, onPrevMonth, onNextMo
       ) : (
         recent.map(e => {
           const meta = [
+            (e.details?.length ?? 0) > 1 ? `共${e.details.length}次` : null,
             habit.enable_tags && e.tags.length > 0 ? e.tags.join(' · ') : null,
             e.notes,
           ].filter(Boolean).join(' | ');

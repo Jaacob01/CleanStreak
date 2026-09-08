@@ -36,15 +36,24 @@ export interface Habit extends HabitConfig {
   created_at: string;
 }
 
+/** 单次打卡明细：一天可打卡多次，每次独立携带时刻、数量、标签与备注 */
+export interface HabitEntryDetail {
+  value: number;
+  time: string | null; // 打卡时刻（ISO-8601，存 UTC，展示转本地时间）
+  tags: string[];
+  notes: string | null;
+}
+
 /** 某天某习惯的一条记录（每天最多一条，值为可修改的累计数） */
 export interface HabitEntry {
   id: number;
   user_id: number;
   habit_id: number;
   date: string;      // YYYY-MM-DD
-  value: number;     // check=1；count=当天数量
-  tags: string[];
-  notes: string | null;
+  value: number;     // check=1；count=当天数量（=各次 value 之和）
+  details: HabitEntryDetail[]; // 每次打卡的独立明细；旧数据为 []，按整条记录视为一次
+  tags: string[];    // 各次标签汇总（并集），兼容展示用
+  notes: string | null; // 各次备注汇总（拼接），兼容展示用
   created_at: string;
 }
 

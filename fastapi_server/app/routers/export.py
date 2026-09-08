@@ -41,7 +41,7 @@ async def export_all(
             {
                 "id": e.id, "habit_id": e.habit_id, "date": e.date,
                 "value": e.value, "tags": e.tags, "notes": e.notes,
-                "created_at": str(e.created_at),
+                "details": e.details or [], "created_at": str(e.created_at),
             }
             for e in entries
         ],

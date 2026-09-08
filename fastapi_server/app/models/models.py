@@ -63,6 +63,9 @@ class HabitEntry(Base):
     habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"), nullable=False)
     date = Column(String(10), nullable=False)
     value = Column(Float, nullable=False, default=1)
+    # 每次打卡的独立明细 [{value, tags, notes}, ...]；value 恒等于各次 value 之和
+    # 顶层 tags/notes 是按次汇总（标签并集 / 备注拼接），供旧消费方（统计/导出/AI）使用
+    details = Column(JSON, nullable=False, default=list)
     tags = Column(JSON, nullable=False, default=list)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)

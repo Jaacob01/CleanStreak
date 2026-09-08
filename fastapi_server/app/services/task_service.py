@@ -30,7 +30,21 @@ async def get_task(db: AsyncSession, task_id: int, user_id: int) -> Task:
     return task
 
 
+async def ensure_user_task_groups(db: AsyncSession, user_id: int) -> None:
+    """分组自愈：任务里出现但 task_groups 未登记的分组名自动补登。
+
+    老数据（分组功能上线前默认 group='Work'）或异常路径会产生未登记分组，
+    导致待办页按已登记分组聚合时这些任务被静默丢弃；读路径顺手补登保证自包含。
+    """
+    rows = await db.execute(
+        select(Task.group).where(Task.user_id == user_id).distinct()
+    )
+    for (name,) in rows.all():
+        await _ensure_group(db, user_id, name)
+
+
 async def list_tasks(db: AsyncSession, user_id: int, filters: TaskListRequest) -> List[Task]:
+    await ensure_user_task_groups(db, user_id)
     stmt = select(Task).where(Task.user_id == user_id)
     if filters.date:
         stmt = stmt.where(Task.date == filters.date)
@@ -150,11 +164,12 @@ async def block_task(db: AsyncSession, task_id: int, user_id: int, reason: str) 
 
 
 async def carry_tasks(db: AsyncSession, user_id: int, date: str) -> dict:
-    """carry-over：把未完成且 date != 传入日期的任务批量刷为传入日期"""
+    """carry-over：把过去日期的未完成任务批量刷为传入日期（未来预约的任务不动）"""
+    await ensure_user_task_groups(db, user_id)
     stmt = select(Task).where(
         Task.user_id == user_id,
         Task.status != "done",
-        Task.date != date,
+        Task.date < date,
     )
     result = await db.execute(stmt)
     tasks = list(result.scalars().all())

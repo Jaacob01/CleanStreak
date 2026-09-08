@@ -2,12 +2,13 @@
  * 打卡记录 API
  */
 import { request } from './client';
-import type { HabitEntry } from '../db/types';
+import type { HabitEntry, HabitEntryDetail } from '../db/types';
 
 interface EntryPatch {
   value?: number;
   tags?: string[];
   notes?: string | null;
+  details?: HabitEntryDetail[];
 }
 
 export async function api_getEntry(habit_id: number, date: string): Promise<HabitEntry | null> {

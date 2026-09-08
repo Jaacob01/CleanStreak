@@ -2,7 +2,7 @@
  * 数据库桥接层 — 所有函数签名保持不变，底层调用 API
  * 前端其他文件无需修改，直接 import from '../db' 即可
  */
-import type { Habit, HabitConfig, HabitEntry, User } from './types';
+import type { Habit, HabitConfig, HabitEntry, HabitEntryDetail, User } from './types';
 import {
   api_register, api_login, api_me, api_changePassword,
   api_getHabits, api_getHabit, api_createHabit, api_updateHabit,
@@ -108,6 +108,7 @@ export interface EntryPatch {
   value?: number;
   tags?: string[];
   notes?: string | null;
+  details?: HabitEntryDetail[];
 }
 
 export async function saveEntry(
